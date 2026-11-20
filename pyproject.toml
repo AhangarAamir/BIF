@@ -1,0 +1,35 @@
+[project]
+name = "bif"
+version = "0.1.0"
+description = "Legal research agent (Agno) over contract PDFs: structure-aware hybrid retrieval, verified citations, any OpenAI-compatible model."
+readme = "README.md"
+authors = [
+    { name = "AhangarAamir", email = "aamirahangar4@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "agno>=3.2.1",
+    "fastapi>=0.165.0",
+    "greenlet>=3.5.6",
+    "numpy>=2.5.5",
+    "openai>=3.55.1",
+    "pydantic>=2.14.3",
+    "pypdf>=7.1.1",
+    "python-dotenv>=1.2.4",
+    "python-multipart>=0.0.34",
+    "sqlalchemy[asyncio]>=2.1.9",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[project.scripts]
+bif = "bif:main"
+
+[build-system]
+requires = ["uv_build>=0.12.24,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "fpdf2>=2.9.0",
+    "pytest>=9.2.0",
+]

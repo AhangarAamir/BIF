@@ -1,0 +1,17 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# BIF runtime data (index, sessions, settings with API keys, corpus)
+data/
+.env
+
+# UI
+ui/node_modules/
