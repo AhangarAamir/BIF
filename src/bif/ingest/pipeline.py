@@ -45,6 +45,7 @@ class IngestReport:
     skipped: list[str] = field(default_factory=list)
     failed: list[dict[str, str]] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    removed: list[str] = field(default_factory=list)
     chunks: int = 0
     pages: int = 0
 
@@ -464,6 +465,10 @@ def ingest_path(
             report.chunks += info.get("chunks", 0)
             report.pages += info.get("pages", 0)
             report.warnings.extend(f"{rel}: {w}" for w in info.get("warnings", []))
+    # A whole-corpus scan also drops entries for files that were moved or deleted,
+    # so a moved file is not left behind with its old path and link.
+    if path is None or str(path).strip() in {"", "."}:
+        report.removed = remove_missing()
     if on_progress:
         on_progress({"type": "done", "total": total})
     return report

@@ -3,6 +3,98 @@ import { AlertTriangle, ChevronRight, FileText, FolderUp, Layers, Loader2, Refre
 import { api } from "../api.js";
 import { classify, fromDrop, fromFileList, uploadAll } from "../upload.js";
 
+function ReviewPanel({ pending, folder, setFolder, keepTop, setKeepTop, onCancel, onConfirm }) {
+  const [autoAnchor, setAutoAnchor] = useState(true);
+  const [preview, setPreview] = useState(null);
+  const [folders, setFolders] = useState([]);
+  const [error, setError] = useState("");
+  const paths = pending.accepted.map((i) => i.path);
+  const top = paths[0]?.includes("/") ? paths[0].split("/")[0] : "";
+
+  useEffect(() => { api.folders().then(setFolders).catch(() => {}); }, []);
+  useEffect(() => {
+    let live = true;
+    const t = setTimeout(() => {
+      api.uploadPreview({ paths, folder, keep_top: keepTop, auto_anchor: autoAnchor })
+        .then((p) => live && (setPreview(p), setError("")))
+        .catch((e) => live && setError(e.message));
+    }, 250);
+    return () => { live = false; clearTimeout(t); };
+  }, [folder, keepTop, autoAnchor, pending]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const needsChoice = preview && preview.unanchored > 0;
+  return (
+    <section className="card review">
+      <div className="review-head">
+        <div>
+          <h2>Review upload{top ? ` · “${top}”` : ""}</h2>
+          <p>
+            {pending.accepted.length} file{pending.accepted.length === 1 ? "" : "s"} to upload
+            {pending.skipped.length ? ` · ${pending.skipped.length} will be skipped (unsupported or hidden)` : ""}.
+            The browser does not tell us where this folder sits in the Document Center, so check the places and links below.
+          </p>
+        </div>
+      </div>
+
+      {preview && (
+        <div className="destinations">
+          {Object.entries(preview.destinations).map(([dest, n]) => (
+            <span key={dest} className="pill">{n} → {dest}</span>
+          ))}
+        </div>
+      )}
+
+      {needsChoice && (
+        <div className="callout">
+          {preview.unanchored === 1 ? "1 file has" : `${preview.unanchored} files have`} no Document Center folder
+          (JOA, PSC, sites, “Document Center”…) in {preview.unanchored === 1 ? "its" : "their"} path, so{" "}
+          {preview.unanchored === 1 ? "it goes" : "they go"} under the “Save under” folder below
+          {folder ? ` (“${folder}”)` : " (currently the Document Center root)"}.
+          {preview.suggestion && (
+            <> Suggested: <button className="link-btn" onClick={() => setFolder(preview.suggestion)}>{preview.suggestion}</button> ({preview.suggestion_reason}).</>
+          )}
+        </div>
+      )}
+
+      <div className="review-options">
+        <label>Save under (for files without a detected place)
+          <input list="corpus-folders" value={folder} onChange={(e) => setFolder(e.target.value)} placeholder="Document Center root" />
+          <datalist id="corpus-folders">{folders.map((f) => <option key={f} value={f} />)}</datalist>
+        </label>
+        <label className="check"><input type="checkbox" checked={keepTop} onChange={(e) => setKeepTop(e.target.checked)} /> Keep the picked folder's own name{top ? ` (“${top}”)` : ""}</label>
+        <label className="check"><input type="checkbox" checked={autoAnchor} onChange={(e) => setAutoAnchor(e.target.checked)} /> Detect the Document Center place from the path</label>
+      </div>
+
+      {error && <p className="banner-error">{error}</p>}
+      {preview && (
+        <div className="table-wrap">
+          <table className="preview-table">
+            <thead><tr><th>File</th><th>Saved as</th><th>Link</th></tr></thead>
+            <tbody>
+              {preview.rows.map((r) => (
+                <tr key={r.file}>
+                  <td className="mono">{r.file}</td>
+                  <td><span className="mono">{r.saved_as}</span><br /><small>{r.how}</small></td>
+                  <td><a className="mono" href={r.link} target="_blank" rel="noreferrer">{decodeURI(r.link).replace(/^https?:\/\/[^/]+/, "")}</a></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {preview.total > preview.rows.length && <small className="more">…and {preview.total - preview.rows.length} more</small>}
+        </div>
+      )}
+
+      <div className="editor-actions">
+        <span className="spacer" />
+        <button className="btn ghost" onClick={onCancel}>Cancel</button>
+        <button className="btn primary" disabled={!preview} onClick={() => onConfirm({ folder, keepTop, autoAnchor })}>
+          <UploadCloud size={15} /> Upload {pending.accepted.length} file{pending.accepted.length === 1 ? "" : "s"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function UploadPanel({ upload, onClose }) {
   if (!upload) return null;
   const { phase, sent, total, saved, skipped, failed } = upload;
@@ -63,7 +155,7 @@ function JobBar({ job }) {
               ? (job.kind === "reembed" ? "Embedding failed" : "Indexing failed")
               : (job.kind === "reembed" ? "Embedding finished" : "Indexing finished")}
         </strong>
-        <span>{job.state === "running" ? (p.current || "starting…") : job.state === "error" ? job.error : r?.added ? `${r.added.length} added · ${r.updated.length} updated · ${r.skipped.length} unchanged · ${r.failed.length} failed` : r?.embedded !== undefined ? `${r.embedded} passages embedded` : "done"}</span>
+        <span>{job.state === "running" ? (p.current || "starting…") : job.state === "error" ? job.error : r?.added ? `${r.added.length} added · ${r.updated.length} updated · ${r.skipped.length} unchanged · ${r.failed.length} failed${r.removed?.length ? ` · ${r.removed.length} removed (file gone)` : ""}` : r?.embedded !== undefined ? `${r.embedded} passages embedded` : "done"}</span>
         <span className="spacer" />
         {p.total ? <small>{p.done}/{p.total}</small> : null}
       </div>
@@ -145,20 +237,36 @@ export default function LibraryPage({ status, refreshStatus }) {
   };
   const [upload, setUpload] = useState(null); // { phase, sent, total, saved, skipped, failed }
 
-  const startUpload = async (items) => {
+  const [pending, setPending] = useState(null); // { accepted, skipped } awaiting review
+
+  // Step 1: pick / drop -> review where files will go. Nothing is uploaded yet.
+  const startUpload = (items) => {
     setError("");
-    const { accepted, skipped } = classify(items, keepTop);
+    const { accepted, skipped } = classify(items);
     if (!accepted.length) {
       setUpload({ phase: "done", sent: 0, total: 0, saved: [], skipped, failed: [] });
       return;
     }
+    setUpload(null);
+    // Every selection starts from scratch: a "save under" left over from the last
+    // upload would silently misplace this one.
+    setFolder("");
+    setKeepTop(true);
+    setPending({ accepted, skipped });
+  };
+
+  // Step 2: confirmed in the review panel.
+  const confirmUpload = async (options) => {
+    const { accepted, skipped } = pending;
+    setPending(null);
     setUpload({ phase: "uploading", sent: 0, total: accepted.length, saved: [], skipped, failed: [] });
-    const result = await uploadAll(accepted, folder, (p) =>
+    const result = await uploadAll(accepted, options, (p) =>
       setUpload((u) => ({ ...u, sent: p.sent, saved: p.saved, failed: p.failed, skipped: [...skipped, ...p.skipped] })),
     );
     setUpload((u) => ({ ...u, phase: "indexing", saved: result.saved, failed: result.failed, skipped: [...skipped, ...result.skipped] }));
     try {
-      if (result.saved.length) await api.ingest({ path: folder || "" });
+      // Files can land in several Document Center folders; scanning skips unchanged files.
+      if (result.saved.length) await api.ingest({ path: "" });
     } catch (e) {
       // Another job is running: the files are saved; "Scan corpus" indexes them later.
       setError(`Files saved, but indexing could not start: ${e.message}. Click “Scan corpus” when the current job finishes.`);
@@ -172,7 +280,7 @@ export default function LibraryPage({ status, refreshStatus }) {
     startUpload(await fromDrop(e.dataTransfer));
   };
 
-  const busy = upload?.phase === "uploading" || upload?.phase === "indexing";
+  const busy = Boolean(pending) || upload?.phase === "uploading" || upload?.phase === "indexing";
   const lib = status?.library;
   const shown = docs.filter((d) => !filter || `${d.title} ${d.short_name} ${d.rel_path} ${d.family}`.toLowerCase().includes(filter.toLowerCase()));
 
@@ -205,25 +313,26 @@ export default function LibraryPage({ status, refreshStatus }) {
         <UploadCloud size={28} />
         <div className="drop-text">
           <strong>Drop files or whole folders here</strong>
-          <span>Sub-folders are kept. Only PDF, Markdown and TXT are uploaded; other files are skipped.</span>
+          <span>Sub-folders are kept and placed to match the Document Center, so links are right. You review where files go before anything is uploaded. Only PDF, Markdown and TXT are uploaded.</span>
           <div className="drop-actions">
             <button type="button" className="btn" disabled={busy} onClick={() => fileInput.current?.click()}><FileText size={14} /> Upload files</button>
             <button type="button" className="btn" disabled={busy} onClick={() => folderInput.current?.click()}><FolderUp size={14} /> Upload folder</button>
-            <label
-              className="check"
-              title={"On: uploading “Regulatory” saves Regulatory/JOA/x.pdf.\nOff: saves JOA/x.pdf (use this when the folder's contents mirror the Document Center root, so links match)."}
-            >
-              <input type="checkbox" checked={keepTop} onChange={(e) => setKeepTop(e.target.checked)} /> Keep the folder's own name
-            </label>
           </div>
-        </div>
-        <div className="folder-input">
-          <span>Save under</span>
-          <input value={folder} onChange={(e) => setFolder(e.target.value)} placeholder="corpus root (or e.g. PSC/Domestic)" />
         </div>
         <input ref={fileInput} type="file" multiple hidden onChange={(e) => { startUpload(fromFileList(e.target.files)); e.target.value = ""; }} />
         <input ref={folderInput} type="file" multiple hidden webkitdirectory="" directory="" onChange={(e) => { startUpload(fromFileList(e.target.files)); e.target.value = ""; }} />
       </div>
+      {pending && (
+        <ReviewPanel
+          pending={pending}
+          folder={folder}
+          setFolder={setFolder}
+          keepTop={keepTop}
+          setKeepTop={setKeepTop}
+          onCancel={() => setPending(null)}
+          onConfirm={confirmUpload}
+        />
+      )}
       <UploadPanel upload={upload} onClose={() => setUpload(null)} />
 
       <div className="table-tools">

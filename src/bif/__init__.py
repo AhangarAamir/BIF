@@ -55,7 +55,7 @@ def main() -> None:
 
         report = ingest_path(args.path or None, force=args.force, use_llm=False if args.no_llm else None,
                              on_progress=progress, workers=args.workers)
-        removed = remove_missing() if args.prune else []
+        removed = report.removed or (remove_missing() if args.prune else [])
         print(
             f"\nadded {len(report.added)} · updated {len(report.updated)} · unchanged {len(report.skipped)}"
             f" · failed {len(report.failed)} · removed {len(removed)} · pages {report.pages} · chunks {report.chunks}"

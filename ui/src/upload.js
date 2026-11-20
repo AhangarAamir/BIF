@@ -43,13 +43,12 @@ export async function fromDrop(dataTransfer) {
   return out;
 }
 
-/** Split into files to send and files to skip (hidden or unsupported). */
-export function classify(items, keepTopFolder = true) {
+/** Split into files to send and files to skip (hidden or unsupported). Paths are sent as picked. */
+export function classify(items) {
   const accepted = [];
   const skipped = [];
   for (const item of items) {
-    let path = item.path.replace(/\\/g, "/");
-    if (!keepTopFolder && path.includes("/")) path = path.slice(path.indexOf("/") + 1);
+    const path = item.path.replace(/\\/g, "/");
     const parts = path.split("/");
     if (parts.some((p) => p.startsWith("."))) skipped.push({ file: item.path, reason: "hidden file" });
     else if (!SUPPORTED.includes(ext(item.file.name))) skipped.push({ file: item.path, reason: `unsupported type ${ext(item.file.name) || "(none)"}` });
@@ -59,7 +58,7 @@ export function classify(items, keepTopFolder = true) {
 }
 
 /** Upload in batches. A failed batch is recorded and the upload continues. */
-export async function uploadAll(items, folder, onProgress) {
+export async function uploadAll(items, options, onProgress) {
   const result = { saved: [], skipped: [], failed: [] };
   let batch = [];
   let bytes = 0;
@@ -70,7 +69,7 @@ export async function uploadAll(items, folder, onProgress) {
     batch = [];
     bytes = 0;
     try {
-      const res = await api.upload(current, folder, false);
+      const res = await api.upload(current, options, false);
       result.saved.push(...res.saved);
       result.skipped.push(...(res.skipped || []));
     } catch (err) {

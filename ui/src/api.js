@@ -43,17 +43,22 @@ export const api = {
   documents: () => request("/api/documents"),
   outline: (id) => request(`/api/documents/${id}/outline`),
   deleteDocument: (id, file) => request(`/api/documents/${id}?delete_file=${file ? "true" : "false"}`, { method: "DELETE" }),
-  // items: [{ file, path }] where path keeps the folder structure ("JOA/New JOA/x.pdf").
-  upload: (items, folder, ingest = false) => {
+  // items: [{ file, path }]; path is relative to the picked folder ("JOA/New JOA/x.pdf").
+  // The server decides the final place (see bif/ingest/placement.py).
+  upload: (items, { folder = "", keepTop = true, autoAnchor = true } = {}, ingest = false) => {
     const form = new FormData();
     for (const { file, path } of items) {
       form.append("files", file, file.name);
       form.append("paths", path || file.name);
     }
-    form.append("folder", folder || "");
+    form.append("folder", folder);
+    form.append("keep_top", keepTop ? "true" : "false");
+    form.append("auto_anchor", autoAnchor ? "true" : "false");
     form.append("ingest", ingest ? "true" : "false");
     return request("/api/documents/upload", { method: "POST", form });
   },
+  folders: () => request("/api/folders"),
+  uploadPreview: (body) => request("/api/upload/preview", { method: "POST", body }),
   ingest: (body) => request("/api/ingest", { method: "POST", body }),
   reembed: () => request("/api/reembed", { method: "POST" }),
   jobs: () => request("/api/jobs"),

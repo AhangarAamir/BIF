@@ -32,10 +32,11 @@ def test_folder_upload_skips_and_continues(indexed_corpus):
     res = client.post("/api/documents/upload", files=files, data=data)
     assert res.status_code == 200, res.text
     body = res.json()
-    assert sorted(body["saved"]) == ["batch/Up/JOA/New JOA/a.pdf", "batch/Up/notes/deep/memo.txt", "batch/evil.txt"]
+    # The JOA folder anchors its file at the Document Center root; the rest go under "batch".
+    assert sorted(body["saved"]) == ["JOA/New JOA/a.pdf", "batch/Up/notes/deep/memo.txt", "batch/evil.txt"]
     reasons = {s["file"]: s["reason"] for s in body["skipped"]}
     assert reasons["Up/docs/report.docx"] == "unsupported type .docx"
     assert reasons["Up/.DS_Store"] == "hidden file"
     assert reasons["Up/NOEXT"] == "unsupported type (none)"
-    assert (CORPUS_DIR / "batch/Up/JOA/New JOA/a.pdf").is_file()
+    assert (CORPUS_DIR / "JOA/New JOA/a.pdf").is_file()
     assert not (CORPUS_DIR.parent / "evil.txt").exists()

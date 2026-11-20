@@ -361,40 +361,87 @@ def delete_document(doc_id: int, delete_file: bool = False) -> dict[str, Any]:
     return {"deleted": doc["rel_path"]}
 
 
+class PreviewIn(BaseModel):
+    paths: list[str]
+    folder: str = ""
+    keep_top: bool = True
+    auto_anchor: bool = True
+
+
+@api.get("/folders")
+def folders() -> list[str]:
+    """Existing corpus folders, for the "save under" picker."""
+    from bif.ingest.placement import corpus_folders
+
+    return corpus_folders()
+
+
+@api.post("/upload/preview")
+def upload_preview(body: PreviewIn) -> dict[str, Any]:
+    """Where each file would be saved and the Document Center link it would get."""
+    from bif.domain import citation_path, citation_url
+    from bif.ingest.placement import place, safe_parts, suggest_base
+
+    rows, unanchored, destinations = [], 0, {}
+    for raw in body.paths:
+        rel, how = place(raw, body.folder, body.keep_top, body.auto_anchor)
+        if not rel:
+            continue
+        if not how.startswith("detected"):
+            unanchored += 1
+        top = rel.split("/")[0] if "/" in rel else "(corpus root)"
+        destinations[top] = destinations.get(top, 0) + 1
+        if len(rows) < 8:
+            rows.append({"file": raw, "saved_as": rel, "how": how, "link": citation_url(rel), "label": citation_path(rel)})
+    tops = [safe_parts(p)[0] for p in body.paths if len(safe_parts(p)) > 1]
+    suggestion, reason = suggest_base(tops) if unanchored else ("", "")
+    return {
+        "rows": rows,
+        "total": len(body.paths),
+        "unanchored": unanchored,
+        "destinations": destinations,
+        "suggestion": suggestion,
+        "suggestion_reason": reason,
+    }
+
+
 @api.post("/documents/upload", dependencies=[Depends(require_admin)])
 async def upload(
     files: list[UploadFile] = File(...),
     paths: list[str] = Form(default=[]),
     folder: str = Form(""),
+    keep_top: bool = Form(True),
+    auto_anchor: bool = Form(True),
     ingest: bool = Form(True),
 ) -> dict[str, Any]:
-    """Save files under the corpus, keeping their folder structure.
+    """Save files under the corpus so the folder tree matches the Document Center.
 
-    `paths[i]` is the relative path of `files[i]` inside an uploaded folder
-    (e.g. "JOA/New JOA/file.pdf"); without it the bare file name is used.
-    Unsupported extensions and hidden files are skipped, not rejected, so a
-    folder upload always continues. The UI sends large folders in batches with
-    ingest=false, then starts one ingest job.
+    `paths[i]` is the relative path of `files[i]` inside the picked folder
+    (e.g. "JOA/New JOA/file.pdf"). Placement (bif.ingest.placement): a `sites`,
+    `Document Center` or family folder in the path anchors it; otherwise it goes
+    under `folder`. Unsupported extensions and hidden files are skipped, not
+    rejected, so a folder upload always continues. The UI sends large folders in
+    batches with ingest=false, then starts one ingest job.
     """
+    from bif.ingest.placement import place, safe_parts
+
     corpus = CORPUS_DIR.resolve()
-    base = (corpus / _safe_rel(folder)).resolve()
-    if base != corpus and corpus not in base.parents:
-        raise HTTPException(400, "Folder must be inside the corpus.")
     saved: list[str] = []
     skipped: list[dict[str, str]] = []
     for index, item in enumerate(files):
         raw = (paths[index] if index < len(paths) and paths[index] else item.filename) or "upload"
-        rel = _safe_rel(raw)
+        if any(part.startswith(".") for part in safe_parts(raw)):
+            skipped.append({"file": raw, "reason": "hidden file"})
+            continue
+        placed, _how = place(raw, folder, keep_top, auto_anchor)
+        rel = Path(placed) if placed else Path()
         if not rel.parts:
             skipped.append({"file": raw, "reason": "empty name"})
-            continue
-        if any(part.startswith(".") for part in rel.parts):
-            skipped.append({"file": raw, "reason": "hidden file"})
             continue
         if rel.suffix.lower() not in SUPPORTED_SUFFIXES:
             skipped.append({"file": raw, "reason": f"unsupported type {rel.suffix or '(none)'}"})
             continue
-        target = (base / rel).resolve()
+        target = (corpus / rel).resolve()
         if corpus not in target.parents:
             skipped.append({"file": raw, "reason": "outside the corpus"})
             continue
@@ -410,8 +457,8 @@ async def upload(
     if ingest and saved:
         from bif.ingest.pipeline import ingest_path
 
-        rel_folder = _safe_rel(folder).as_posix()
-        job = JOBS.start("ingest", ingest_path, path=rel_folder if rel_folder != "." else None)
+        # Anchored files can land outside `folder`; scan the corpus (unchanged files are skipped).
+        job = JOBS.start("ingest", ingest_path, path=None)
     return {"saved": saved, "skipped": skipped, "job": job}
 
 
