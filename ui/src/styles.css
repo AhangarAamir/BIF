@@ -389,12 +389,19 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); box-sha
 .job-issues li { display: flex; gap: 6px; align-items: flex-start; padding: 2px 0; }
 .dropzone {
   display: flex; align-items: center; gap: 16px; border: 1.5px dashed var(--line-strong); border-radius: var(--radius);
-  padding: 18px 20px; background: var(--panel); color: var(--accent); cursor: pointer; transition: all 0.15s; margin-bottom: 16px;
+  padding: 18px 20px; background: var(--panel); color: var(--accent); cursor: default; transition: all 0.15s; margin-bottom: 16px;
 }
 .dropzone:hover, .dropzone.drag { border-color: var(--accent); background: var(--accent-soft); }
 .dropzone > div:nth-child(2) { display: flex; flex-direction: column; flex: 1; color: var(--text); }
 .dropzone span { color: var(--muted); font-size: 13.5px; }
-.folder-input { display: flex; align-items: center; gap: 6px; color: var(--faint); width: 260px; }
+.folder-input { display: flex; flex-direction: column; gap: 4px; color: var(--faint); width: 280px; font-size: 12px; }
+.drop-text { display: flex; flex-direction: column; gap: 2px; flex: 1; color: var(--text); }
+.drop-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); cursor: pointer; }
+.check input { width: auto; }
+.skipped { margin-top: 10px; font-size: 13px; color: var(--muted); }
+.skipped summary { cursor: pointer; }
+.skipped ul { max-height: 200px; overflow: auto; margin: 6px 0 0; padding-left: 18px; }
 .folder-input input { font-size: 13px; padding: 7px 10px; }
 .table-tools { display: flex; gap: 10px; margin-bottom: 10px; }
 .doc-list { display: flex; flex-direction: column; gap: 6px; }

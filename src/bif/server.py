@@ -313,12 +313,16 @@ def jobs() -> list[dict[str, Any]]:
 
 # ------------------------------------------------------------------ library
 
-_SAFE = re.compile(r"[^A-Za-z0-9 ._()&+,-]")
+# Only characters that are unsafe in file paths are replaced; real names are kept so
+# Document Center links still match the original file names.
+_SAFE = re.compile(r'[<>:"|?*\x00-\x1f]')
 
 
 def _safe_rel(path: str) -> Path:
-    parts = [p for p in (path or "").replace("\\", "/").split("/") if p not in {"", ".", ".."}]
-    return Path(*[_SAFE.sub("_", p) for p in parts]) if parts else Path()
+    """Relative path with '..', '.', empty and absolute parts removed."""
+    parts = [p.strip() for p in (path or "").replace("\\", "/").split("/")]
+    parts = [_SAFE.sub("_", p) for p in parts if p and p not in {".", ".."}]
+    return Path(*parts) if parts else Path()
 
 
 @api.get("/documents")
@@ -358,27 +362,57 @@ def delete_document(doc_id: int, delete_file: bool = False) -> dict[str, Any]:
 
 
 @api.post("/documents/upload", dependencies=[Depends(require_admin)])
-async def upload(files: list[UploadFile] = File(...), folder: str = Form(""), ingest: bool = Form(True)) -> dict[str, Any]:
-    base = (CORPUS_DIR / _safe_rel(folder)).resolve()
-    if CORPUS_DIR.resolve() not in [base, *base.parents]:
+async def upload(
+    files: list[UploadFile] = File(...),
+    paths: list[str] = Form(default=[]),
+    folder: str = Form(""),
+    ingest: bool = Form(True),
+) -> dict[str, Any]:
+    """Save files under the corpus, keeping their folder structure.
+
+    `paths[i]` is the relative path of `files[i]` inside an uploaded folder
+    (e.g. "JOA/New JOA/file.pdf"); without it the bare file name is used.
+    Unsupported extensions and hidden files are skipped, not rejected, so a
+    folder upload always continues. The UI sends large folders in batches with
+    ingest=false, then starts one ingest job.
+    """
+    corpus = CORPUS_DIR.resolve()
+    base = (corpus / _safe_rel(folder)).resolve()
+    if base != corpus and corpus not in base.parents:
         raise HTTPException(400, "Folder must be inside the corpus.")
-    base.mkdir(parents=True, exist_ok=True)
-    saved = []
-    for item in files:
-        name = _SAFE.sub("_", Path(item.filename or "upload").name)
-        if Path(name).suffix.lower() not in SUPPORTED_SUFFIXES:
-            raise HTTPException(400, f"{name}: only {', '.join(sorted(SUPPORTED_SUFFIXES))} files are supported.")
-        target = base / name
-        with target.open("wb") as fh:
-            shutil.copyfileobj(item.file, fh)
-        saved.append(target.relative_to(CORPUS_DIR.resolve()).as_posix())
+    saved: list[str] = []
+    skipped: list[dict[str, str]] = []
+    for index, item in enumerate(files):
+        raw = (paths[index] if index < len(paths) and paths[index] else item.filename) or "upload"
+        rel = _safe_rel(raw)
+        if not rel.parts:
+            skipped.append({"file": raw, "reason": "empty name"})
+            continue
+        if any(part.startswith(".") for part in rel.parts):
+            skipped.append({"file": raw, "reason": "hidden file"})
+            continue
+        if rel.suffix.lower() not in SUPPORTED_SUFFIXES:
+            skipped.append({"file": raw, "reason": f"unsupported type {rel.suffix or '(none)'}"})
+            continue
+        target = (base / rel).resolve()
+        if corpus not in target.parents:
+            skipped.append({"file": raw, "reason": "outside the corpus"})
+            continue
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("wb") as fh:
+                shutil.copyfileobj(item.file, fh)
+        except OSError as exc:
+            skipped.append({"file": raw, "reason": f"could not save: {exc}"})
+            continue
+        saved.append(target.relative_to(corpus).as_posix())
     job = None
-    if ingest:
+    if ingest and saved:
         from bif.ingest.pipeline import ingest_path
 
-        rel = _safe_rel(folder).as_posix()
-        job = JOBS.start("ingest", ingest_path, path=rel if rel != "." else None)
-    return {"saved": saved, "job": job}
+        rel_folder = _safe_rel(folder).as_posix()
+        job = JOBS.start("ingest", ingest_path, path=rel_folder if rel_folder != "." else None)
+    return {"saved": saved, "skipped": skipped, "job": job}
 
 
 @api.get("/chunks/{chunk_id}")

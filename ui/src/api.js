@@ -43,11 +43,15 @@ export const api = {
   documents: () => request("/api/documents"),
   outline: (id) => request(`/api/documents/${id}/outline`),
   deleteDocument: (id, file) => request(`/api/documents/${id}?delete_file=${file ? "true" : "false"}`, { method: "DELETE" }),
-  upload: (files, folder) => {
+  // items: [{ file, path }] where path keeps the folder structure ("JOA/New JOA/x.pdf").
+  upload: (items, folder, ingest = false) => {
     const form = new FormData();
-    for (const f of files) form.append("files", f);
+    for (const { file, path } of items) {
+      form.append("files", file, file.name);
+      form.append("paths", path || file.name);
+    }
     form.append("folder", folder || "");
-    form.append("ingest", "true");
+    form.append("ingest", ingest ? "true" : "false");
     return request("/api/documents/upload", { method: "POST", form });
   },
   ingest: (body) => request("/api/ingest", { method: "POST", body }),
