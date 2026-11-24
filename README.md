@@ -29,6 +29,27 @@ uv run bif status
 uv run pytest                              # offline tests (no model needed)
 ```
 
+## Answer evaluation
+
+Score the query agent against a golden file. The PDF named in `source_file` must already be indexed (`uv run bif ingest`). Each question is asked again, then judged against `expected_answer` and passages from that file. `data/eval/results.jsonl` gets one line per question (the agent's answer, verdict, score). `data/eval/summary.json` gets the totals for that `--tag`. Both files stay under `data/` and are not committed.
+
+`data/eval/golden.json` is a JSON list:
+
+```json
+[
+  {
+    "id": "q1",
+    "question": "What does Article 10.7 of the KG-D6 PSC say?",
+    "expected_answer": "The contractor must submit the development plan within 200 days.",
+    "source_file": "PSC/KG-DWN-98_3 PSC.pdf"
+  }
+]
+```
+
+```bash
+uv run bif eval data/eval/golden.json --tag manual
+```
+
 ## Models: open-source or paid, same agent
 
 A **profile** is an OpenAI-compatible endpoint plus the wire API to use:

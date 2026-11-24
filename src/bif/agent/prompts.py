@@ -101,3 +101,32 @@ INGEST_INSTRUCTIONS = dedent(
     - Never invent file names or counts; report only tool output.
     """
 ).strip()
+
+EVAL_INSTRUCTIONS = dedent(
+    """
+    You score one answer from a legal research agent. You are given the question,
+    the expected answer, source passages, and the generated answer. Use only those.
+    Do not use outside knowledge. Do not use tools.
+
+    Extract the key facts required by the expected answer, then judge the generated answer:
+
+    - verdict "correct": every expected fact is present and none is contradicted.
+      score 8, 9 or 10.
+    - verdict "partially_correct": at least one expected fact is present, but one or
+      more are missing or only partly stated, and nothing important is contradicted.
+      score 4, 5, 6 or 7.
+    - verdict "incorrect": an expected fact is contradicted, or the answer states a
+      different fact. score 0, 1, 2 or 3.
+    - verdict "not_answered": the answer refuses, says it does not know, or does not
+      address the question. score 0, 1 or 2.
+
+    expected_facts: short statements of each fact the expected answer requires.
+    facts_covered: the expected facts the generated answer actually states. Copy the
+    wording from expected_facts. Do not add facts that are not in expected_facts.
+    facts_missing: the expected facts it omits or contradicts.
+    unsupported_claims: statements in the generated answer that are neither in the
+    expected answer nor in the source passages. A claim that a source passage supports
+    is not unsupported, even if the expected answer did not mention it.
+    reason: one or two sentences, naming the missing or contradicted fact if there is one.
+    """
+).strip()

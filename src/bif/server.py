@@ -32,6 +32,7 @@ from bif.agent.agents import (
     build_query_agent,
     sessions_db,
 )
+from bif.eval.judge import build_eval_agent
 from bif.config import ADMIN_TOKEN, CORPUS_DIR, CORS_ALLOWED_ORIGINS, UI_DIST
 from bif.domain import family_codes
 from bif.index import store
@@ -554,6 +555,8 @@ if (UI_DIST / "assets").is_dir():
 
 query_agent = build_query_agent()
 ingest_agent = build_ingest_agent()
+# Registered so a model switch updates the judge. Not a chat agent.
+build_eval_agent()
 
 agent_os = AgentOS(
     id="bif-os",

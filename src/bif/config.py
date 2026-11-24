@@ -72,6 +72,23 @@ INGEST_LLM_PROFILE = _bool("INGEST_LLM_PROFILE", True)
 # "database is locked" (open issue). Use --workers > 1 only after that is fixed.
 INGEST_WORKERS = max(1, int(os.getenv("INGEST_WORKERS", "1")))
 
+# Live evaluation. Off unless a golden file is configured and EVAL_LIVE is true.
+# A chat question is scored only when it matches a question in that file exactly
+# (after lowercasing and stripping punctuation). Results go to EVAL_DIR.
+EVAL_DIR = DATA_DIR / "eval"
+EVAL_LIVE = _bool("EVAL_LIVE", False)
+
+
+def _eval_dataset() -> Path:
+    raw = os.getenv("EVAL_DATASET", "").strip()
+    path = Path(raw).expanduser() if raw else EVAL_DIR / "golden.json"
+    if not path.is_absolute():
+        path = ROOT_DIR / path
+    return path
+
+
+EVAL_DATASET = _eval_dataset()
+
 # Citation links, same rules as aamir-rag: files under sites/ link from SITES_BASE_URL,
 # every other file from DOC_CENTER_BASE_URL plus its folder path; names end in .pdf.
 # Set both to empty strings in .env to link to the local file served by this app instead.

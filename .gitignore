@@ -7,9 +7,12 @@ wheels/
 # Virtual environments
 .venv
 
-# BIF runtime data (index, sessions, settings with API keys, corpus)
+# BIF runtime data (index, sessions, settings with API keys, corpus, eval results)
 data/
 .env
+
+# Local source PDFs kept next to the repo, not part of the code
+*.pdf
 
 # UI
 ui/node_modules/

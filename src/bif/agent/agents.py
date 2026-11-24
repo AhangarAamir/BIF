@@ -16,6 +16,7 @@ from bif.agent.prompts import INGEST_INSTRUCTIONS, QUERY_INSTRUCTIONS
 from bif.agent.source_tools import SourceFileTools
 from bif.agent.tools import LegalResearchTools, LibraryTools
 from bif.agent.verify import finalize_answer
+from bif.eval.runner import evaluate_answer
 from bif.config import NUM_HISTORY_RUNS, SESSIONS_DB, TOOL_CALL_LIMIT
 from bif.models import build_chat_model
 from bif.settings import ModelProfile, active_profile
@@ -49,7 +50,7 @@ def build_query_agent(profile: Optional[ModelProfile] = None) -> Agent:
         max_tool_calls_from_history=0,
         add_datetime_to_context=True,
         tool_call_limit=TOOL_CALL_LIMIT,
-        post_hooks=[finalize_answer],
+        post_hooks=[finalize_answer, evaluate_answer],
         markdown=True,
     )
     _agents[QUERY_AGENT_ID] = agent

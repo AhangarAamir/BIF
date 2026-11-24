@@ -4,6 +4,7 @@
     uv run bif ingest [path] [--force]    # index files under the corpus folder
     uv run bif ask "question"             # one question from the terminal
     uv run bif reembed                    # rebuild vectors after changing the embedding model
+    uv run bif eval golden.json [--tag name]
     uv run bif status
 """
 
@@ -31,6 +32,10 @@ def main() -> None:
 
     ask = sub.add_parser("ask", help="ask one question")
     ask.add_argument("question", nargs="+")
+
+    evaluate = sub.add_parser("eval", help="score answers against a golden JSON file")
+    evaluate.add_argument("path", help="JSON list of {id, question, expected_answer, source_file}")
+    evaluate.add_argument("--tag", default="", help="label stored with this run (default: a timestamp)")
 
     reembed_p = sub.add_parser("reembed", help="embed chunks with the configured embedding model")
     reembed_p.add_argument("--workers", type=int, help="embedding batches in parallel (default 1)")
@@ -72,6 +77,16 @@ def main() -> None:
         agent = build_query_agent()
         agent.print_response(" ".join(args.question), stream=False)
         return
+
+    if args.command == "eval":
+        from bif.config import EVAL_DIR
+        from bif.eval.metrics import format_summary
+        from bif.eval.runner import run_batch
+
+        summary = run_batch(args.path, tag=args.tag)
+        print(format_summary(summary))
+        print(f"saved: {EVAL_DIR / 'results.jsonl'}")
+        sys.exit(1 if summary.get("errors") else 0)
 
     if args.command == "reembed":
         from bif.ingest.pipeline import reembed
